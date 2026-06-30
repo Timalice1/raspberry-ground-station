@@ -1,0 +1,6 @@
+.gitignore
+.vscode
+./raspberry-esp/.pio
+./raspberry-esp/.vscode/
+./raspberry-esp/.gitignore/
+./raspberry-esp/test/
