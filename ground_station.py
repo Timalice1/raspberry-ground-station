@@ -5,7 +5,6 @@ import sys
 import paramiko
 import threading
 import json
-import time
 
 DEADZONE = 0.08
 AXIS_THR = 1
@@ -109,20 +108,18 @@ try:
     ssh = setup_connection()
     stdin, stdout, stderr = ssh.exec_command("python vesc-control.py")
 
-    if pygame.joystick.get_count() == 0:
-        print("no joystick found")
-        sys.exit(1)
-    joystick = pygame.joystick.Joystick(0)
+    joystick = pygame.joystick.Joystick(0) if pygame.joystick.get_count() > 0 else None
 
     while True:
         pygame.event.pump()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 raise KeyboardInterrupt
-            
-            if event.type == pygame.JOYBUTTONUP:
-                if event.button == 0:
-                    current_stream = current_stream + 1 if current_stream + 1 < len(streams) else 0
+
+            if joystick is not None:            
+                if event.type == pygame.JOYBUTTONUP:
+                    if event.button == 0:
+                        current_stream = current_stream + 1 if current_stream + 1 < len(streams) else 0
 
         #==========================
         if not streams[current_stream].connected:
@@ -134,17 +131,18 @@ try:
         #=========================
 
         #======================================================================================= 
-        thr = joystick.get_axis(AXIS_THR) if abs(joystick.get_axis(AXIS_THR)) > DEADZONE else 0
-        yaw = joystick.get_axis(AXIS_YAW) if abs(joystick.get_axis(AXIS_YAW)) > DEADZONE else 0
-        
+        if joystick is not None:
+            thr = joystick.get_axis(AXIS_THR) if abs(joystick.get_axis(AXIS_THR)) > DEADZONE else 0
+            yaw = joystick.get_axis(AXIS_YAW) if abs(joystick.get_axis(AXIS_YAW)) > DEADZONE else 0
+            
 
-        data = {
-            "thr": int(map(thr, -1, 1, 1000, 2000)),
-            "yaw": int(map(yaw, -1, 1, 1000, 2000))
-        }
+            data = {
+                "thr": int(map(thr, -1, 1, 1000, 2000)),
+                "yaw": int(map(yaw, -1, 1, 1000, 2000))
+            }
 
-        stdin.write(f"{json.dumps(data)}\n")
-        stdin.flush()
+            stdin.write(f"{json.dumps(data)}\n")
+            stdin.flush()
         #=======================================================================================
 
         clock.tick(30)
