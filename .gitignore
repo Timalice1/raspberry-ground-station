@@ -4,3 +4,4 @@
 ./raspberry-esp/.vscode/
 ./raspberry-esp/.gitignore/
 ./raspberry-esp/test/
+__pycache__

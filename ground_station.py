@@ -1,154 +1,123 @@
-import cv2
-import subprocess
-import pygame
 import sys
 import paramiko
 import threading
 import json
+import rtspstream as rtsp, pygame
 
-DEADZONE = 0.08
-AXIS_THR = 1
-AXIS_YAW = 0
+with open("config.json", "r", encoding="utf-8") as file:
+    cfg = json.load(file)
 
-INVERT_THR = 1 
-INVERT_YAW = 1
 
-CAM_IP = "192.168.106.110"
-PI_IP = "100.117.181.95"
-PI_USER ="raspberry-drone"
+def remap(value: float, in_min, in_max, out_min, out_max) -> int:
+    return out_min + ((value - in_min) / (in_max - in_min)) * (out_max - out_min)
 
-RESOLUTION = (640, 480)
 
-pygame.init()
-screen = pygame.display.set_mode(RESOLUTION)
-clock = pygame.time.Clock()
+def remote_output(stdout, stderr):
+    def _pump(stream, label):
+        for line in iter(stream.readline, ""):
+            if line:
+                print(f"[remote:{label}] {line.rstrip()}")
 
-class CameraStream:
-    def __init__(self, cam_ip, local_port):
-        self.rtsp_url = f"rtsp://admin:Admin1234@127.0.0.1:{local_port}/cam/realmonitor?channel=1&subtype=1"
-        self.frame = None
-        self.running = True
-        self.lock = threading.Lock()
-        self.connected = False
-        self.cam_ip = cam_ip
-        
-        self.tunnel = subprocess.Popen(["ssh", "-N", "-L", f"{local_port}:{cam_ip}:554", f"{PI_USER}@{PI_IP}"])
-        if self.tunnel.poll() is not None:
-            return
+    threading.Thread(target=_pump, args=(stdout, "out"), daemon=True).start()
+    threading.Thread(target=_pump, args=(stderr, "err"), daemon=True).start()
 
-        self.connected = True       
-        self.thread = threading.Thread(target=self._grab, daemon = True)
-        self.thread.start()
-
-    def _grab(self):
-
-        self.cap = cv2.VideoCapture(self.rtsp_url)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        
-        if not self.cap.isOpened():
-            self.tunnel.terminate()
-            self.connected = False
-            return
-
-        failures = 0
-        while self.running:
-            ret, frame = self.cap.read()
-            if ret:
-                failures = 0 
-                with self.lock: 
-                    self.frame = frame
-            else:
-                failures += 1
-                if failures > 30:
-                    print("stream lost")
-                    self.connected = False
-                    break
-
-    def read(self):
-        with self.lock:
-            return self.frame.copy() if self.frame is not None else None
-    
-    def stop(self):
-        self.running = False
-        self.thread.join()
-        if hasattr(self, "cap"):
-            self.cap.release()
-        if hasattr(self, "tunel"):
-            self.tunnel.terminate()
 
 def setup_connection():
+    """Set the SSH connection with a raspberry using paramico"""
+
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(hostname=PI_IP, username=PI_USER, timeout=10)
-        print(f"Connected to {PI_USER}@{PI_IP} succesfully")
+        ssh.connect(hostname=cfg["host"], username=cfg["usr"], timeout=10)
+        print(f"Connected to {cfg["usr"]}@{cfg["host"]} succesfully")
         return ssh
     except Exception as e:
-        print(f"Failed to connect: {e}")
+        print(f"Failed to connect to {cfg["usr"]}@{cfg["host"]}:  {e}")
         sys.exit(1)
 
-def render_stream(frame):
-    frame = cv2.resize(frame, RESOLUTION)
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    surf = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
-    screen.blit(surf, (0, 0))
-    pygame.display.flip()
 
-def map(value: float, in_min, in_max, out_min, out_max) -> int:
-    return out_min + ((value - in_min) / (in_max - in_min)) * (out_max - out_min)
+def main():
 
-try:
-    current_stream = 0
-    streams = [
-        CameraStream("192.168.106.109", 8554),
-        CameraStream("192.168.106.10", 8555)
-        # --> any additional camera streams add here
-    ]
-
+    pygame.init()
     ssh = setup_connection()
-    stdin, stdout, stderr = ssh.exec_command("python vesc-control.py")
 
     joystick = pygame.joystick.Joystick(0) if pygame.joystick.get_count() > 0 else None
+    screen = pygame.display.set_mode((1280, 720))
+    clock = pygame.time.Clock()
 
-    while True:
-        pygame.event.pump()
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                raise KeyboardInterrupt
+    streams = []
+    current_stream = 0
 
-            if joystick is not None:            
-                if event.type == pygame.JOYBUTTONUP:
+    try:
+
+        streams = [
+            rtsp.CameraStream(ip, 8550 + i)
+            for i, ip in enumerate(cfg["cam_cfg"]["ip`s"])
+        ]
+
+        stdin, stdout, stderr = ssh.exec_command("python vesc-control.py")
+        remote_output(stdout, stderr)
+
+        while True:
+            pygame.event.pump()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    raise KeyboardInterrupt
+
+                if joystick is not None and event.type == pygame.JOYBUTTONUP:
                     if event.button == 0:
-                        current_stream = current_stream + 1 if current_stream + 1 < len(streams) else 0
+                        current_stream = (current_stream + 1) % len(streams)
 
-        #==========================
-        if not streams[current_stream].connected:
-            continue
-        frame = streams[current_stream].read()
-        if frame is None:
-            continue
-        render_stream(frame)
-        #=========================
+            # ==========================
+            frame = streams[current_stream].read()
+            if frame is not None:
+                rtsp.render_stream(frame, screen)
 
-        #======================================================================================= 
-        if joystick is not None:
-            thr = joystick.get_axis(AXIS_THR) if abs(joystick.get_axis(AXIS_THR)) > DEADZONE else 0
-            yaw = joystick.get_axis(AXIS_YAW) if abs(joystick.get_axis(AXIS_YAW)) > DEADZONE else 0
-            
+            # =========================
 
-            data = {
-                "thr": int(map(thr, -1, 1, 1000, 2000)),
-                "yaw": int(map(yaw, -1, 1, 1000, 2000))
-            }
+            # =======================================================================================
+            if joystick is not None:
 
-            stdin.write(f"{json.dumps(data)}\n")
-            stdin.flush()
-        #=======================================================================================
+                deadzone = cfg["controller_cfg"]["deadzone"]
+                axis_thr = cfg["controller_cfg"]["axis_thr"]
+                axis_yaw = cfg["controller_cfg"]["axis_yaw"]
+                inv_thr = cfg["controller_cfg"]["invert_thr"]
+                inv_yaw = cfg["controller_cfg"]["invert_yaw"]
+                thr = (
+                    joystick.get_axis(axis_thr) * inv_thr
+                    if abs(joystick.get_axis(axis_thr)) > deadzone
+                    else 0
+                )
+                yaw = (
+                    joystick.get_axis(axis_yaw) * inv_yaw
+                    if abs(joystick.get_axis(axis_yaw)) > deadzone
+                    else 0
+                )
 
-        clock.tick(30)
+                data = {
+                    "thr": int(remap(thr, -1, 1, 1000, 2000)),
+                    "yaw": int(remap(yaw, -1, 1, 1000, 2000)),
+                }
 
-finally:
-    for stream in streams:
-        stream.stop()
-    ssh.close()
-    pygame.quit()
+                # try:
+                #     stdin.write(f"{json.dumps(data)}\n")
+                #     stdin.flush()
+                # except OSError as err:
+                #     print(f"Lost controll channel, {err}")
+                #     break
+            # =======================================================================================
+
+            pygame.display.flip()
+            clock.tick(30)
+
+    finally:
+        for stream in streams:
+            stream.stop()
+
+        if ssh:
+            ssh.close()
+        pygame.quit()
+
+
+if __name__ == "__main__":
+    main()
