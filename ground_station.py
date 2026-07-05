@@ -3,6 +3,7 @@ import paramiko
 import threading
 import json
 import rtspstream as rtsp, pygame
+from typing import Optional
 from box import Box
 
 with open("config.json", "r", encoding="utf-8") as file:
@@ -23,43 +24,85 @@ def remote_output(stdout, stderr):
     threading.Thread(target=_pump, args=(stderr, "err"), daemon=True).start()
 
 
-def setup_connection():
-    """Set the SSH connection with a raspberry using paramico"""
-
+def init_streams() -> Optional[list[rtsp.CameraStream]]:
     try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(hostname=cfg.host, username=cfg.usr, timeout=10)
-        print(f"Connected to {cfg.usr}@{cfg.host} succesfully")
-        return ssh
-    except Exception as e:
-        print(f"Failed to connect to {cfg.usr}@{cfg.host}: {e}")
-        sys.exit(1)
-
-
-def main():
-
-    pygame.init()
-    clock = pygame.time.Clock()
-    screen = pygame.display.set_mode(tuple(cfg.screen_size))
-    if cfg.fullscreen:
-        pygame.display.toggle_fullscreen()
-
-    joystick = pygame.joystick.Joystick(0) if pygame.joystick.get_count() > 0 else None
-    ssh = setup_connection()
-
-    streams = []
-    current_stream = 0
-
-    try:
-        with ssh:
-            stdin, stdout, stderr = ssh.exec_command("python vesc-control.py")
-            remote_output(stdout, stderr)
-
         streams = [
             rtsp.CameraStream(ip, 8550 + i)
             for i, ip in enumerate(cfg["cam_cfg"]["ip`s"])
         ]
+        return streams
+    except Exception as e:
+        print(f"failed to create streams: {e}")
+        return []
+
+
+def init_screen() -> pygame.Surface:
+    screen = pygame.display.set_mode(tuple(cfg.screen_size))
+    if cfg.fullscreen:
+        pygame.display.toggle_fullscreen()
+    return screen
+
+
+class SSHConnector:
+    def __init__(self):
+        self.stdin = None
+        self.ssh: Optional[paramiko.SSHClient] = None
+
+    def connect(self):
+        try:
+            self.ssh = paramiko.SSHClient()
+            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.ssh.connect(hostname=cfg.host, username=cfg.usr, timeout=10)
+            print(f"Connected to {cfg.usr}@{cfg.host} succesfully")
+            return True
+        except Exception as e:
+            print(f"Failed to connect to {cfg.usr}@{cfg.host}: {e}")
+            return False
+
+    def start_remote_controll(self):
+        if not self.ssh:
+            return False
+        try:
+            self.stdin, stdout, stderr = self.ssh.exec_command("python vesc-control.py")
+            remote_output(stdout, stderr)
+            return True
+        except Exception as e:
+            print(f"Failed to start remote controll, {e}")
+            return False
+
+    def send_command(self, cmd: dict):
+        if self.stdin is None:
+            return
+        try:
+            self.stdin.write(f"{json.dumps(cmd)}\n")
+            self.stdin.flush()
+        except OSError as err:
+            print(f"Lost controll channel, {err}")
+
+    def close(self):
+        if self.ssh:
+            self.ssh.close()
+
+
+def main():
+    pygame.init()
+    clock = pygame.time.Clock()
+    screen = init_screen()
+
+    ssh = SSHConnector()
+    if not ssh.connect():
+        sys.exit(1)
+
+    if not ssh.start_remote_controll():
+        ssh.close()
+
+    joystick = pygame.joystick.Joystick(0) if pygame.joystick.get_count() > 0 else None
+
+    try:
+        current_stream = 0
+        streams = init_streams()
+        if streams is not None:
+            streams[current_stream].start()
 
         while True:
             pygame.event.pump()
@@ -68,13 +111,13 @@ def main():
                     raise KeyboardInterrupt
 
                 if joystick is not None and event.type == pygame.JOYBUTTONUP:
-                    if event.button == 0:
-                        # streams[current_stream].stop()
+                    if event.button == 0 and streams:  # Cycle between cameras
                         current_stream = (current_stream + 1) % len(streams)
                         streams[current_stream].start()
 
             # ==========================
-            streams[current_stream].render_stream(screen)
+            if streams and screen:
+                streams[current_stream].render_stream(screen)
             # =========================
 
             # =======================================================================================
@@ -103,12 +146,7 @@ def main():
                     "yaw": int(remap(yaw, -1, 1, 1000, 2000)),
                 }
 
-                # try:
-                #     stdin.write(f"{json.dumps(data)}\n")
-                #     stdin.flush()
-                # except OSError as err:
-                #     print(f"Lost controll channel, {err}")
-                #     break
+                ssh.send_command(data)
             # =======================================================================================
 
             pygame.display.flip()

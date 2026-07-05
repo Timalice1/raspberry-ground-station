@@ -1,0 +1,2 @@
+- handle raspberry disconect - reconect
+- add GUI

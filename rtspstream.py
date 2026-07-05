@@ -10,6 +10,7 @@ from box import Box
 import queue
 
 FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
+RES = {1080: (0, 1920, 1080), 720: (0, 1280, 720), 480: (1, 640, 480)}
 
 with open("config.json", "r", encoding="utf-8") as f:
     cfg = Box(json.load(f))
@@ -20,10 +21,10 @@ class CameraStream:
         self.local_port = localport
         self.cam_ip = cam_ip
 
-        self.width = cfg.res[0]
-        self.height = cfg.res[1]
+        self.subtype, self.width, self.height = RES.get(cfg.res, (1, 640, 480))
+
         self.frame_size = self.width * self.height * 3
-        self._rtsp_url = f"rtsp://{cfg.cam_cfg.credentials}@127.0.0.1:{localport}/cam/realmonitor?channel=1&subtype={cfg.cam_cfg.subtype}"
+        self._rtsp_url = f"rtsp://{cfg.cam_cfg.credentials}@127.0.0.1:{localport}/cam/realmonitor?channel=1&subtype={self.subtype}"
 
         self.ffmpeg = None
         self.latest_frame = None
@@ -33,8 +34,6 @@ class CameraStream:
 
         self.tunnel: Optional[subprocess.Popen] = None
         self.thread: Optional[threading.Thread] = None
-
-        self.start()
 
     def _run_ffmpeg(self):
         cmd = [
