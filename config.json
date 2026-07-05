@@ -5,6 +5,11 @@
         640,
         480
     ],
+    "screen_size": [
+        640,
+        480
+    ],
+    "fullscreen": false,
     "controller_cfg": {
         "deadzone": 0.08,
         "axis_thr": 1,
@@ -13,10 +18,11 @@
         "invert_yaw": 1
     },
     "cam_cfg": {
-        "credentials": "admin:Admin1234@127.0.0.1",
+        "credentials": "admin:Admin1234",
         "subtype": 1,
         "ip`s": [
             "192.168.106.110"
-        ]
+        ],
+        "reconection_timiout": 4
     }
 }
