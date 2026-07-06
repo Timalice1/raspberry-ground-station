@@ -1,0 +1,8 @@
+{
+    "defaults": {
+        "font": {
+            "name": "noto_sans",
+            "size": "18"
+        }
+    }
+}

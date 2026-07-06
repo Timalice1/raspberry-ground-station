@@ -28,6 +28,7 @@ class CameraStream:
 
         self.ffmpeg = None
         self.latest_frame = None
+        self.had_frame = False
 
         self.running = False
         self._lock = threading.Lock()
@@ -164,12 +165,16 @@ class CameraStream:
             frame_surface = pygame.transform.smoothscale(frame_surface, (new_w, new_h))
 
             surface.blit(frame_surface, (x, y))
+            return True
+        else:
+            return False
 
     def stop(self):
         self.running = False
         if hasattr(self, "tunnel") and self.tunnel is not None:
             self.tunnel.terminate()
-        if hasattr(self, "thread") and self.thread.is_alive():
-            self.thread.join(timeout=3)
+        if hasattr(self, "thread") and self.thread is not None:
+            if self.thread.is_alive():
+                self.thread.join(timeout=3)
         if hasattr(self, "ffmpeg") and self.ffmpeg is not None:
             self.ffmpeg.terminate()

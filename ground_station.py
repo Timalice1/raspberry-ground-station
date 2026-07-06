@@ -5,6 +5,7 @@ import json
 import rtspstream as rtsp, pygame
 from typing import Optional
 from box import Box
+import pygame_gui as gui
 
 with open("config.json", "r", encoding="utf-8") as file:
     cfg = Box(json.load(file))
@@ -27,8 +28,7 @@ def remote_output(stdout, stderr):
 def init_streams() -> Optional[list[rtsp.CameraStream]]:
     try:
         streams = [
-            rtsp.CameraStream(ip, 8550 + i)
-            for i, ip in enumerate(cfg["cam_cfg"]["ip`s"])
+            rtsp.CameraStream(ip, 8550 + i) for i, ip in enumerate(cfg.cam_cfg.ip)
         ]
         return streams
     except Exception as e:
@@ -36,11 +36,12 @@ def init_streams() -> Optional[list[rtsp.CameraStream]]:
         return []
 
 
-def init_screen() -> pygame.Surface:
+def init_screen():
     screen = pygame.display.set_mode(tuple(cfg.screen_size))
     if cfg.fullscreen:
         pygame.display.toggle_fullscreen()
-    return screen
+    ui_manager = gui.UIManager(tuple(cfg.screen_size))
+    return screen, ui_manager
 
 
 class SSHConnector:
@@ -84,10 +85,24 @@ class SSHConnector:
             self.ssh.close()
 
 
+# =====UI=============
+pygame.init()
+screen, ui_manager = init_screen()
+
+wight, height = screen.get_size()
+cx = wight // 2
+cy = height // 2
+
+vid_label = gui.elements.UILabel(
+    relative_rect=pygame.Rect(cx - 60, cy - 10, 120, 20),
+    text="waiting for video",
+    manager=ui_manager,
+)
+
+
 def main():
-    pygame.init()
     clock = pygame.time.Clock()
-    screen = init_screen()
+    dt = clock.tick(30) / 1000.0
 
     ssh = SSHConnector()
     if not ssh.connect():
@@ -112,12 +127,18 @@ def main():
 
                 if joystick is not None and event.type == pygame.JOYBUTTONUP:
                     if event.button == 0 and streams:  # Cycle between cameras
+                        # streams[current_stream].stop()
                         current_stream = (current_stream + 1) % len(streams)
                         streams[current_stream].start()
 
+                ui_manager.process_events(event)
+
             # ==========================
             if streams and screen:
-                streams[current_stream].render_stream(screen)
+                if streams[current_stream].render_stream(screen):
+                    vid_label.hide()
+                else:
+                    vid_label.show()
             # =========================
 
             # =======================================================================================
@@ -149,8 +170,9 @@ def main():
                 ssh.send_command(data)
             # =======================================================================================
 
-            pygame.display.flip()
-            clock.tick(30)
+            ui_manager.draw_ui(screen)
+            ui_manager.update(dt)
+            pygame.display.update()
 
     finally:
         for stream in streams:

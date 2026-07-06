@@ -1,2 +1,11 @@
 - handle raspberry disconect - reconect
+    - make disarm on connection lost
 - add GUI
+    - telemetry
+    - connection settings
+- arm-disarm
+- if using ssh port pipeing for a camera stream, raspberry vill require a passvord each time
+    - try another possibility to forvard a port 
+    - or create an auto generator of the ssh key
+- GPS telemetry
+- Battery voltage telemetry 
