@@ -5,8 +5,9 @@
         1720,
         980
     ],
-    "res": 480,
+    "res": 720,
     "fullscreen": false,
+    "target_fps": 60,
     "controller_cfg": {
         "deadzone": 0.08,
         "axis_thr": 1,
@@ -16,8 +17,7 @@
     },
     "cam_cfg": {
         "credentials": "admin:Admin1234",
-        "ip": [
-            "192.168.106.109",
+        "IPs": [
             "192.168.106.110"
         ],
         "reconection_timeout": 4

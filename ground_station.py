@@ -1,11 +1,12 @@
-import sys
-import paramiko
-import threading
 import json
-import rtspstream as rtsp, pygame
-from typing import Optional
-from box import Box
+import pygame
 import pygame_gui as gui
+from box import Box
+from typing import Optional
+import logging
+
+from network.ssh_connector import SSHConnector
+from network.rtspstream import CameraStream
 
 with open("config.json", "r", encoding="utf-8") as file:
     cfg = Box(json.load(file))
@@ -15,24 +16,12 @@ def remap(value: float, in_min, in_max, out_min, out_max) -> int:
     return out_min + ((value - in_min) / (in_max - in_min)) * (out_max - out_min)
 
 
-def remote_output(stdout, stderr):
-    def _pump(stream, label):
-        for line in iter(stream.readline, ""):
-            if line:
-                print(f"[remote:{label}] {line.rstrip()}")
-
-    threading.Thread(target=_pump, args=(stdout, "out"), daemon=True).start()
-    threading.Thread(target=_pump, args=(stderr, "err"), daemon=True).start()
-
-
-def init_streams() -> Optional[list[rtsp.CameraStream]]:
+def init_streams() -> Optional[list[CameraStream]]:
     try:
-        streams = [
-            rtsp.CameraStream(ip, 8550 + i) for i, ip in enumerate(cfg.cam_cfg.ip)
-        ]
+        streams = [CameraStream(ip, 8550 + i) for i, ip in enumerate(cfg.cam_cfg.IPs)]
         return streams
     except Exception as e:
-        print(f"failed to create streams: {e}")
+        logging.exception(e)
         return []
 
 
@@ -44,78 +33,44 @@ def init_screen():
     return screen, ui_manager
 
 
-class SSHConnector:
-    def __init__(self):
-        self.stdin = None
-        self.ssh: Optional[paramiko.SSHClient] = None
+def init_connection():
+    ssh = SSHConnector()
+    connected, msg = ssh.connect(cfg.usr, cfg.host)
+    if not connected:
+        logging.error(msg)
+        return None, False
+    logging.info(msg)
 
-    def connect(self):
-        try:
-            self.ssh = paramiko.SSHClient()
-            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self.ssh.connect(hostname=cfg.host, username=cfg.usr, timeout=10)
-            print(f"Connected to {cfg.usr}@{cfg.host} succesfully")
-            return True
-        except Exception as e:
-            print(f"Failed to connect to {cfg.usr}@{cfg.host}: {e}")
-            return False
+    rc_enabled, msg = ssh.start_remote_controll()
+    if not rc_enabled:
+        logging.error(msg)
+        # ssh.close() # TODO: probably i still ant to hold a connection
+        return ssh, False
+    logging.info(msg)
 
-    def start_remote_controll(self):
-        if not self.ssh:
-            return False
-        try:
-            self.stdin, stdout, stderr = self.ssh.exec_command("python vesc-control.py")
-            remote_output(stdout, stderr)
-            return True
-        except Exception as e:
-            print(f"Failed to start remote controll, {e}")
-            return False
-
-    def send_command(self, cmd: dict):
-        if self.stdin is None:
-            return
-        try:
-            self.stdin.write(f"{json.dumps(cmd)}\n")
-            self.stdin.flush()
-        except OSError as err:
-            print(f"Lost controll channel, {err}")
-
-    def close(self):
-        if self.ssh:
-            self.ssh.close()
+    return ssh, rc_enabled
 
 
-# =====UI=============
 pygame.init()
 screen, ui_manager = init_screen()
 
-wight, height = screen.get_size()
-cx = wight // 2
-cy = height // 2
-
-vid_label = gui.elements.UILabel(
-    relative_rect=pygame.Rect(cx - 60, cy - 10, 120, 20),
-    text="waiting for video",
-    manager=ui_manager,
-)
-
 
 def main():
+    logging.basicConfig(filename="groung_station.log", filemode="w", level=logging.INFO)
     clock = pygame.time.Clock()
-    dt = clock.tick(30) / 1000.0
+    dt = clock.tick(cfg.get("target_fps", 30)) / 1000.0
 
-    ssh = SSHConnector()
-    if not ssh.connect():
-        sys.exit(1)
-
-    if not ssh.start_remote_controll():
-        ssh.close()
+    ssh, rc_enabled = init_connection()
+    streams = init_streams()
 
     joystick = pygame.joystick.Joystick(0) if pygame.joystick.get_count() > 0 else None
+    if joystick is None:
+        logging.warning("No joysticks found connected")
+    else:
+        logging.info(f"Joystick connected: {joystick.get_name()}")
 
     try:
         current_stream = 0
-        streams = init_streams()
         if streams is not None:
             streams[current_stream].start()
 
@@ -127,7 +82,6 @@ def main():
 
                 if joystick is not None and event.type == pygame.JOYBUTTONUP:
                     if event.button == 0 and streams:  # Cycle between cameras
-                        # streams[current_stream].stop()
                         current_stream = (current_stream + 1) % len(streams)
                         streams[current_stream].start()
 
@@ -135,15 +89,10 @@ def main():
 
             # ==========================
             if streams and screen:
-                if streams[current_stream].render_stream(screen):
-                    vid_label.hide()
-                else:
-                    vid_label.show()
-            # =========================
+                streams[current_stream].render_stream(screen)
 
             # =======================================================================================
-            if joystick is not None:
-
+            if joystick is not None and rc_enabled:
                 deadzone = cfg["controller_cfg"]["deadzone"]
                 axis_thr = cfg["controller_cfg"]["axis_thr"]
                 axis_yaw = cfg["controller_cfg"]["axis_yaw"]
@@ -167,12 +116,17 @@ def main():
                     "yaw": int(remap(yaw, -1, 1, 1000, 2000)),
                 }
 
-                ssh.send_command(data)
+                msg = ssh.send_command(data)
             # =======================================================================================
 
             ui_manager.draw_ui(screen)
             ui_manager.update(dt)
             pygame.display.update()
+
+    except KeyboardInterrupt:
+        logging.info("shut down")
+    except Exception as e:
+        logging.exception(f"Unexpected exception in main loop:\t{e}")
 
     finally:
         for stream in streams:

@@ -5,3 +5,4 @@
 ./raspberry-esp/.gitignore/
 ./raspberry-esp/test/
 __pycache__
+*.log
