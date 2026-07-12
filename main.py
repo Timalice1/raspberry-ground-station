@@ -7,6 +7,7 @@ import sys
 from core.ground_station import GroundStation
 from services.joystick_controller import JoystickController
 from UI.ui_manager import UIController
+from UI.screens.flight_screen import FlightScreen
 
 CONFIG_PATH = "config/config.json"
 LOG_PATH = "ground_station.log"
@@ -40,13 +41,14 @@ def main():
     running = True
     try:
 
-        ui = UIController(cfg)
-
         controller = JoystickController(cfg.controller_cfg)
         controller.init()
 
         gs = GroundStation(cfg, controller)
         gs.setup()
+
+        ui = UIController(cfg)
+        ui.open_screen(FlightScreen())
 
         while running:
             dt = clock.tick(cfg.get("target_fps", 30)) / 1000.0
@@ -58,12 +60,10 @@ def main():
                 gs.process_event(event)
                 ui.process_event(event)
 
-            stream = gs.get_stream()
-            if stream is not None:
-                ui.render_stream(stream)
-
             gs.update(dt)
             ui.update(dt)
+            ui.draw(gs.snapshot())
+            pygame.display.update()
 
     except Exception as e:
         logging.exception(f"Exception in main loop:\t{str(e)}")

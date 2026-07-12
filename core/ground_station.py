@@ -1,10 +1,20 @@
 import pygame
 from box import Box
 import logging
+from dataclasses import dataclass
 
 from services.joystick_controller import JoystickController
 from services.ssh_connector import SSHConnector
-from services.rtspstream import CameraStream
+from services.rtspstream import CameraStream, np
+
+
+@dataclass(frozen=True)
+class GSSnapshot:
+    """Snapshot data class, that will provide a data from a backend to a frontend"""
+
+    frame: np.ndarray | None
+    # Any another data that needs to be displayed
+    # ...
 
 
 class GroundStation:
@@ -58,7 +68,7 @@ class GroundStation:
     def update(self, delta_time: float):
         self._process_rc()
 
-    def get_stream(self):
+    def _get_stream(self):
         if not self.streams:
             return None
         return self.streams[self.current_stream].read()
@@ -68,6 +78,10 @@ class GroundStation:
             return
         self.current_stream = (self.current_stream + 1) % len(self.streams)
         self.streams[self.current_stream].start()
+
+    def snapshot(self) -> GSSnapshot:
+        """Creates a current state snapshot, that will be provided to the GUI"""
+        return GSSnapshot(self._get_stream())
 
     def stop(self):
         for stream in self.streams:
