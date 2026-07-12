@@ -3,11 +3,11 @@ echo ==========================
 echo ESP32 sketch uploading...
 echo ==========================
 
-set FIRMWARE_PATH=.pio\\build\\esp32s3\\
+set FIRMWARE_PATH=..\\.pio\\build\\esp32s3\\
 set HOST=100.117.181.95
 set USER=raspberry-drone
 
-cd raspberry-esp
+cd ..\\raspberry-esp
 %userprofile%\.platformio\penv\Scripts\platformio.exe run -e esp32s3
 
 scp -o StrictHostKeyChecking=no %FIRMWARE_PATH%firmware.bin %USER%@%HOST%:~/

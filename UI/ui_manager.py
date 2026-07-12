@@ -20,7 +20,7 @@ class UIController:
             flags=pygame.FULLSCREEN if self.cfg.fullscreen else 0,
         )
 
-    def render_frame(self, frame: Optional[np.ndarray]):
+    def render_stream(self, frame: Optional[np.ndarray]):
         self.screen.fill((0, 0, 12))
 
         if frame is None:
