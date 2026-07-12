@@ -11,38 +11,45 @@ class SSHConnector:
         self.ssh: Optional[paramiko.SSHClient] = None
 
     def connect(self, user: str, host: str):
+        if not user or not host:
+            logging.error("Invalid host and username provided")
+            return False
         try:
             self.ssh = paramiko.SSHClient()
             self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             self.ssh.connect(hostname=host, username=user, timeout=10)
-            return True, f"Connected to {user}@{host}"
+            logging.info(f"Connected to {user}@{host}")
+            return True
         except Exception as e:
-            return False, str(e)
+            logging.exception(e)
+            return False
 
     def start_remote_controll(self):
         if not self.ssh:
-            return False, "SSH does not connected"
+            logging.error(
+                "Failed to start remote controll, ssh connection does not set"
+            )
+            return False
         try:
             self.stdin, stdout, stderr = self.ssh.exec_command("python vesc-control.py")
             self._remote_output(stdout, stderr)
-            exit_code = self.stdin.channel.recv_exit_status()
-            # if exit_code != 0:
-            #     return False, f"Failed to run remote controll, exit code: {exit_code}"
 
-            return True, "Remote controll started"
+            logging.info("Remote controll started")
+            return True
         except Exception as e:
-            return False, str(e)
+            logging.exception(e)
+            return False
 
     def send_command(self, cmd: dict):
         if self.stdin is None:
-            logging.log("send_command(): No input channel")
+            logging.log("ssh_connector::send_command(): No input channel")
             return False
         try:
             self.stdin.write(f"{json.dumps(cmd)}\n")
             self.stdin.flush()
             return True
         except Exception as e:
-            logging.exception(f"send_command(): {str(e)}")
+            logging.exception(f"ssh_connector::send_command(): {str(e)}")
             return False
 
     def close(self):

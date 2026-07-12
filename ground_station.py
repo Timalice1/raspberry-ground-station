@@ -1,141 +1,100 @@
-import json
 import pygame
-import pygame_gui as gui
 from box import Box
-from typing import Optional
 import logging
 
 from network.ssh_connector import SSHConnector
 from network.rtspstream import CameraStream
-
-with open("config.json", "r", encoding="utf-8") as file:
-    cfg = Box(json.load(file))
-
-
-def remap(value: float, in_min, in_max, out_min, out_max) -> int:
-    return out_min + ((value - in_min) / (in_max - in_min)) * (out_max - out_min)
+from UI.ui_manager import UIController
+from joystick_controller import JoystickController
 
 
-def init_streams() -> Optional[list[CameraStream]]:
-    try:
-        streams = [CameraStream(ip, 8550 + i) for i, ip in enumerate(cfg.cam_cfg.IPs)]
-        return streams
-    except Exception as e:
-        logging.exception(e)
-        return []
+class GroundStation:
 
+    def __init__(
+        self, cfg: Box, ui_controller: UIController, joystick: JoystickController
+    ):
+        self.running = False
+        self.clock = pygame.time.Clock()
+        self.cfg = cfg
 
-def init_screen():
-    screen = pygame.display.set_mode(tuple(cfg.screen_size))
-    if cfg.fullscreen:
-        pygame.display.toggle_fullscreen()
-    ui_manager = gui.UIManager(tuple(cfg.screen_size))
-    return screen, ui_manager
+        self.ssh: SSHConnector | None = None
+        self.rc_enabled = False
 
+        self.joystick = joystick
 
-def init_connection():
-    ssh = SSHConnector()
-    connected, msg = ssh.connect(cfg.usr, cfg.host)
-    if not connected:
-        logging.error(msg)
-        return None, False
-    logging.info(msg)
+        self.streams = []
+        self.current_stream = 0
 
-    rc_enabled, msg = ssh.start_remote_controll()
-    if not rc_enabled:
-        logging.error(msg)
-        # ssh.close() # TODO: probably i still ant to hold a connection
-        return ssh, False
-    logging.info(msg)
+        self.ui_controller = ui_controller
 
-    return ssh, rc_enabled
+    def _init_connection(self):
+        # TODO: add a reconection timeout
+        self.ssh = SSHConnector()
+        if not self.ssh.connect(self.cfg.get("usr", ""), self.cfg.get("host", "")):
+            raise RuntimeError("Failsed to set up an ssh connection")
+        self.rc_enabled = self.ssh.start_remote_controll()
 
+    def _init_streams(self):
+        if not self.cfg.cam_cfg.IPs:
+            logging.warning("No camera IPs prowided in config")
+            return
+        self.streams = [
+            CameraStream(self.cfg, ip, 8550 + i)
+            for i, ip in enumerate(self.cfg.cam_cfg.IPs)
+        ]
 
-pygame.init()
-screen, ui_manager = init_screen()
+    def setup(self):
+        # Probably make that in separated thread, since that blocks the main thread
+        self._init_connection()
+        self._init_streams()
+        self.running = True
 
+    def run(self):
+        if self.streams:
+            self.streams[self.current_stream].start()
 
-def main():
-    logging.basicConfig(filename="groung_station.log", filemode="w", level=logging.INFO)
-    clock = pygame.time.Clock()
-    dt = clock.tick(cfg.get("target_fps", 30)) / 1000.0
+        while self.running:
+            dt = self.clock.tick(self.cfg.get("target_fps", 30)) / 1000.0
 
-    ssh, rc_enabled = init_connection()
-    streams = init_streams()
+            self._process_events()
+            self._process_rc_command()
 
-    joystick = pygame.joystick.Joystick(0) if pygame.joystick.get_count() > 0 else None
-    if joystick is None:
-        logging.warning("No joysticks found connected")
-    else:
-        logging.info(f"Joystick connected: {joystick.get_name()}")
+            if self.streams:
+                frame = self.streams[self.current_stream].read()
+                self.ui_controller.render_frame(frame)
 
-    try:
-        current_stream = 0
-        if streams is not None:
-            streams[current_stream].start()
+            self.ui_controller.update(dt)
 
-        while True:
-            pygame.event.pump()
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    raise KeyboardInterrupt
+    def _process_events(self):
+        pygame.event.pump()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
 
-                if joystick is not None and event.type == pygame.JOYBUTTONUP:
-                    if event.button == 0 and streams:  # Cycle between cameras
-                        current_stream = (current_stream + 1) % len(streams)
-                        streams[current_stream].start()
+            if self.joystick is not None and event.type == pygame.JOYBUTTONUP:
+                if (
+                    event.button == self.cfg.controller_cfg.swich_cam_btn
+                ):  # Cycle between cameras
+                    self._cycle_stream()
 
-                ui_manager.process_events(event)
+            self.ui_controller.process_event(event)
 
-            # ==========================
-            if streams and screen:
-                streams[current_stream].render_stream(screen)
+    def _process_rc_command(self):
+        if not (self.rc_enabled and self.ssh is not None):
+            return
+        data = self.joystick.get_input()
+        if data is not None:
+            self.ssh.send_command(data)
 
-            # =======================================================================================
-            if joystick is not None and rc_enabled:
-                deadzone = cfg["controller_cfg"]["deadzone"]
-                axis_thr = cfg["controller_cfg"]["axis_thr"]
-                axis_yaw = cfg["controller_cfg"]["axis_yaw"]
-                inv_thr = cfg["controller_cfg"]["invert_thr"]
-                inv_yaw = cfg["controller_cfg"]["invert_yaw"]
+    def _cycle_stream(self):
+        if not self.streams:
+            return
+        self.current_stream = (self.current_stream + 1) % len(self.streams)
+        self.streams[self.current_stream].start()
 
-                thr = (
-                    joystick.get_axis(axis_thr) * inv_thr
-                    if abs(joystick.get_axis(axis_thr)) > deadzone
-                    else 0
-                )
-
-                yaw = (
-                    joystick.get_axis(axis_yaw) * inv_yaw
-                    if abs(joystick.get_axis(axis_yaw)) > deadzone
-                    else 0
-                )
-
-                data = {
-                    "thr": int(remap(thr, -1, 1, 1000, 2000)),
-                    "yaw": int(remap(yaw, -1, 1, 1000, 2000)),
-                }
-
-                msg = ssh.send_command(data)
-            # =======================================================================================
-
-            ui_manager.draw_ui(screen)
-            ui_manager.update(dt)
-            pygame.display.update()
-
-    except KeyboardInterrupt:
-        logging.info("shut down")
-    except Exception as e:
-        logging.exception(f"Unexpected exception in main loop:\t{e}")
-
-    finally:
-        for stream in streams:
+    def stop(self):
+        self.running = False
+        for stream in self.streams:
             stream.stop()
-
-        if ssh:
-            ssh.close()
-        pygame.quit()
-
-
-if __name__ == "__main__":
-    main()
+        if self.ssh:
+            self.ssh.close()

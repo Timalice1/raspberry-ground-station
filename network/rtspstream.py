@@ -1,6 +1,6 @@
 import subprocess
 import threading
-import time
+import logging
 from typing import Optional
 import pygame
 import imageio_ffmpeg
@@ -12,19 +12,17 @@ import queue
 FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
 RES = {1080: (0, 1920, 1080), 720: (0, 1280, 720), 480: (1, 640, 480)}
 
-with open("config.json", "r", encoding="utf-8") as f:
-    cfg = Box(json.load(f))
-
 
 class CameraStream:
-    def __init__(self, cam_ip: str, localport: int):
+    def __init__(self, cfg: Box, cam_ip: str, localport: int):
         self.local_port = localport
         self.cam_ip = cam_ip
+        self.cfg = cfg
 
-        self.subtype, self.width, self.height = RES.get(cfg.res, (1, 640, 480))
+        self.subtype, self.width, self.height = RES.get(self.cfg.res, (1, 640, 480))
 
         self.frame_size = self.width * self.height * 3
-        self._rtsp_url = f"rtsp://{cfg.cam_cfg.credentials}@127.0.0.1:{localport}/cam/realmonitor?channel=1&subtype={self.subtype}"
+        self._rtsp_url = f"rtsp://{self.cfg.cam_cfg.credentials}@127.0.0.1:{localport}/cam/realmonitor?channel=1&subtype={self.subtype}"
 
         self.ffmpeg = None
         self.latest_frame = None
@@ -82,7 +80,7 @@ class CameraStream:
                     "-N",
                     "-L",
                     f"{self.local_port}:{self.cam_ip}:554",
-                    f"{cfg.usr}@{cfg.host}",
+                    f"{self.cfg.usr}@{self.cfg.host}",
                 ]
             )
 
@@ -92,6 +90,9 @@ class CameraStream:
         self.running = True
         self.thread = threading.Thread(target=self._grab, daemon=True)
         self.thread.start()
+        logging.info(
+            f"Streaming for {self.cam_ip} on port {self.local_port} has been started"
+        )
 
     def _read_frames(self, proc, q: "queue.Queue"):
         while self.running:
@@ -127,7 +128,9 @@ class CameraStream:
 
             while self.running:
                 try:
-                    frame = frame_queue.get(timeout=cfg.cam_cfg.reconection_timeout)
+                    frame = frame_queue.get(
+                        timeout=self.cfg.cam_cfg.reconection_timeout
+                    )
                 except queue.Empty:
                     break
 
@@ -143,31 +146,9 @@ class CameraStream:
                 self.ffmpeg.terminate()
                 self.ffmpeg.wait()
 
-    def _read(self) -> Optional[np.ndarray]:
+    def read(self) -> Optional[np.ndarray]:
         with self._lock:
             return self.latest_frame
-
-    def render_stream(self, surface: pygame.Surface):
-        surface.fill((0, 0, 20))
-
-        frame = self._read()
-        if frame is not None:
-            screen_w, screen_h = surface.get_size()
-            frame_h, frame_w = frame.shape[:2]
-
-            scale = min(screen_w / frame_w, screen_h / frame_h)
-            new_w, new_h = int(frame_w * scale), int(frame_h * scale)
-
-            x = (screen_w - new_w) // 2
-            y = (screen_h - new_h) // 2
-
-            frame_surface = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
-            frame_surface = pygame.transform.smoothscale(frame_surface, (new_w, new_h))
-
-            surface.blit(frame_surface, (x, y))
-            return True
-        else:
-            return False
 
     def stop(self):
         self.running = False

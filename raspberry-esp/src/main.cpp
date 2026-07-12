@@ -6,15 +6,14 @@
 #define CH_LEFT 0
 #define CH_RIGHT 1
 
-
-void SetPPM(int ch, int us){
+void SetPPM(int ch, int us)
+{
     int duty = (us * 16383UL) / 20000;
     ledcWrite(ch, duty);
 }
 
-void set_engine(int thr, int yaw){
-
-    Serial.printf("SetEngine: thr: %d, yaw: %d\n", thr, yaw);
+void set_engine(int thr, int yaw)
+{
 
     int left = thr;
     int right = thr;
@@ -29,7 +28,8 @@ void set_engine(int thr, int yaw){
     SetPPM(CH_RIGHT, right);
 }
 
-void setup(){
+void setup()
+{
     Serial.begin(115200);
 
     ledcSetup(CH_LEFT, 50, 14);
@@ -43,21 +43,25 @@ void setup(){
     Serial.println("ESP32 ready...");
 }
 
-void loop(){
+void loop()
+{
 
-    if(Serial.available()){
+    if (Serial.available())
+    {
         String json = Serial.readStringUntil('\n');
         json.trim();
 
-        if(json.length() == 0){
+        if (json.length() == 0)
+        {
             Serial.print("No data received");
             return;
         }
 
         JsonDocument data;
         DeserializationError err = deserializeJson(data, json);
-        
-        if(err != DeserializationError::Ok){
+
+        if (err != DeserializationError::Ok)
+        {
             Serial.print("Deserialization failed: ");
             Serial.println(err.f_str());
             return;
