@@ -6,8 +6,9 @@ import sys
 
 from core.ground_station import GroundStation
 from services.joystick_controller import JoystickController
-from UI.ui_manager import UIController
-from UI.screens.flight_screen import FlightScreen
+
+
+from UI import UIController, FlightScreen, MainMenuScreen
 
 CONFIG_PATH = "config/config.json"
 LOG_PATH = "ground_station.log"
@@ -20,6 +21,10 @@ def load_cfg():
     except Exception as e:
         logging.exception(str(e))
         sys.exit(1)
+
+
+def fake_Connect(user: str, host: str):
+    print(f"{user}@{host}")
 
 
 def main():
@@ -44,11 +49,15 @@ def main():
         controller = JoystickController(cfg.controller_cfg)
         controller.init()
 
-        gs = GroundStation(cfg, controller)
-        gs.setup()
+        gs = GroundStation(controller)
+        # gs.setup()
 
         ui = UIController(cfg)
-        ui.open_screen(FlightScreen())
+
+        def open_flight():
+            ui.open_screen(FlightScreen())
+
+        ui.open_screen(MainMenuScreen(on_connect=gs.setup, on_connected=open_flight))
 
         while running:
             dt = clock.tick(cfg.get("target_fps", 30)) / 1000.0

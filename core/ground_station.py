@@ -19,9 +19,9 @@ class GSSnapshot:
 
 class GroundStation:
 
-    def __init__(self, cfg: Box, joystick: JoystickController):
-        self.cfg = cfg
+    def __init__(self, joystick: JoystickController):
         self.joystick = joystick
+        self.cfg: Box | None = None
 
         self.ssh: SSHConnector | None = None
         self.rc_enabled = False
@@ -32,8 +32,10 @@ class GroundStation:
     def _init_connection(self):
         self.ssh = SSHConnector()
         if not self.ssh.connect(self.cfg.get("usr", ""), self.cfg.get("host", "")):
-            raise RuntimeError("Failed to set up an ssh connection")
+            logging.error("Failed to set up SSH connection")
+            return False
         self.rc_enabled = self.ssh.start_remote_controll()
+        return True
 
     def _init_streams(self):
         if not self.cfg.cam_cfg.IPs:
@@ -44,12 +46,15 @@ class GroundStation:
             for i, ip in enumerate(self.cfg.cam_cfg.IPs)
         ]
 
-    def setup(self):
+    def setup(self, cfg: Box):
+        self.cfg = cfg
         # Probably make that in separated thread, since that blocks the main thread
-        self._init_connection()
+        if not self._init_connection():
+            return False
         self._init_streams()
         if self.streams:
             self.streams[self.current_stream].start()
+        return True
 
     def process_event(self, event):
         if self.joystick is not None and event.type == pygame.JOYBUTTONUP:

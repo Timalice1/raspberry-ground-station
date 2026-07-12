@@ -10,7 +10,7 @@ class Screen(ABC):
     def __init__(self):
         """Reusable abstract screen interface"""
 
-        self.manager: gui.UIManager = None
+        self.manager: gui.UIManager | None = None
         self.screen_size: tuple[int, int]
         self.container: gui.elements.UIPanel | None = None
 
@@ -21,12 +21,12 @@ class Screen(ABC):
 
     def on_exit(self) -> None:
         """Tear down widget. Called when leaving the screen"""
-
-    def process_event(self, event: pygame.event.Event) -> None:
-        """React to a pygame_gui event (UI_BUTTON_PRESSED etc)."""
         if self.container is not None:
             self.container.kill()
             self.container = None
+
+    def process_event(self, event: pygame.event.Event) -> None:
+        """React to a pygame_gui event (UI_BUTTON_PRESSED etc)."""
 
     def update(self, dt: float) -> None:
         """Non-UI per-frame logic (polling a thread result queue, etc)."""

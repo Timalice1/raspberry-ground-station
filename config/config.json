@@ -2,10 +2,10 @@
     "usr": "raspberry-drone",
     "host": "100.117.181.95",
     "screen_size": [
-        1720,
-        980
+        640,
+        480
     ],
-    "res": 1080,
+    "res": 720,
     "fullscreen": false,
     "target_fps": 60,
     "controller_cfg": {

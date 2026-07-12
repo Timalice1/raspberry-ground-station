@@ -14,7 +14,9 @@ class UIController:
 
         self.screen_size = tuple(cfg.screen_size)
         self.window: pygame.Surface = self._init_window()
-        self.ui_manager = gui.UIManager(tuple(self.cfg.screen_size))
+        self.ui_manager = gui.UIManager(
+            tuple(self.cfg.screen_size), theme_path="config\\dronetheme.json"
+        )
 
         self._current_screen: Screen | None = None
 
@@ -28,10 +30,10 @@ class UIController:
         if self._current_screen is not None:
             self._current_screen.on_exit()
         self._current_screen = screen
-        self._current_screen.on_enter(self.ui_manager, self.screen_size)
+        self._current_screen.on_enter(self.ui_manager, self.window.get_size())
 
     def draw(self, snapshot: GSSnapshot):
-        self.window.fill((0, 0, 15))
+        self.window.fill((10, 10, 15))
         if self._current_screen is not None:
             self._current_screen.draw(self.window, snapshot)
         self.ui_manager.draw_ui(self.window)
