@@ -13,16 +13,16 @@ class SSHConnector:
     def connect(self, user: str, host: str):
         if not user or not host:
             logging.error("Invalid host and username provided")
-            return False
+            return False, "Invalid host and username provided"
         try:
             self.ssh = paramiko.SSHClient()
             self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             self.ssh.connect(hostname=host, username=user, timeout=10)
             logging.info(f"Connected to {user}@{host}")
-            return True
+            return True, ""
         except Exception as e:
             logging.exception(e)
-            return False
+            return False, str(e)
 
     def start_remote_controll(self):
         if not self.ssh:
@@ -31,8 +31,10 @@ class SSHConnector:
             )
             return False
         try:
-            self.stdin, stdout, stderr = self.ssh.exec_command("python vesc-control.py")
-            self._remote_output(stdout, stderr)
+            self.stdin, self.stdout, stderr = self.ssh.exec_command(
+                "python vesc-control.py"
+            )
+            self._remote_output(self.stdout, stderr)
 
             logging.info("Remote controll started")
             return True
@@ -52,6 +54,11 @@ class SSHConnector:
             logging.exception(f"ssh_connector::send_command(): {str(e)}")
             return False
 
+    def read_telemetry(self):
+        data: str = self.stdout.readline().strip()
+        if data.startswith("TELEM:"):
+            return data[6:]
+
     def close(self):
         if self.ssh:
             self.ssh.close()
@@ -61,6 +68,8 @@ class SSHConnector:
             for line in iter(stream.readline, ""):
                 if line:
                     if stream is stdout:
+                        if line.startswith("TELEM:"):
+                            continue
                         logging.info(f"[remote:{label}] {line.rstrip()}")
                     elif stream is stderr:
                         logging.error(f"[remote:{label}] {line.rstrip()}")

@@ -14,13 +14,20 @@ class JoystickController:
         self.inv_thr = cfg.get("invert_thr", 1)
         self.inv_yaw = cfg.get("invert_yaw", 1)
 
-    def init(self):
+    def connect(self):
         if pygame.joystick.get_count() > 0:
             self.joystick = pygame.joystick.Joystick(0)
             logging.info(f"Joystick connected: {self.joystick.get_name()}")
+            return True
         else:
+            # TODO: run a reconnection logic
             logging.warning("No joysticks found connected")
             self.joystick = None
+            return False
+
+    @property
+    def connected(self) -> bool:
+        return self.joystick is not None
 
     @staticmethod
     def _remap(value: float, in_min, in_max, out_min, out_max) -> int:

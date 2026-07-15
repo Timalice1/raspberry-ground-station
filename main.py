@@ -23,10 +23,6 @@ def load_cfg():
         sys.exit(1)
 
 
-def fake_Connect(user: str, host: str):
-    print(f"{user}@{host}")
-
-
 def main():
     logging.basicConfig(
         filename=LOG_PATH,
@@ -47,17 +43,16 @@ def main():
     try:
 
         controller = JoystickController(cfg.controller_cfg)
-        controller.init()
+        controller.connect()
 
         gs = GroundStation(controller)
-        # gs.setup()
-
         ui = UIController(cfg)
 
         def open_flight():
             ui.open_screen(FlightScreen())
+            gs.run()
 
-        ui.open_screen(MainMenuScreen(on_connect=gs.setup, on_connected=open_flight))
+        ui.open_screen(MainMenuScreen(on_connect=gs.connect, on_connected=open_flight))
 
         while running:
             dt = clock.tick(cfg.get("target_fps", 30)) / 1000.0

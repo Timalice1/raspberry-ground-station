@@ -10,7 +10,7 @@ from box import Box
 import queue
 
 FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
-RES = {1080: (0, 1920, 1080), 720: (0, 1280, 720), 480: (1, 640, 480)}
+RES = {"1080": (0, 1920, 1080), "720": (0, 1280, 720), "480": (1, 640, 480)}
 
 
 class CameraStream:

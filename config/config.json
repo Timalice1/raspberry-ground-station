@@ -2,10 +2,15 @@
     "usr": "raspberry-drone",
     "host": "100.117.181.95",
     "screen_size": [
-        640,
-        480
+        1920,
+        1080
     ],
-    "res": 720,
+    "res": "1080",
+    "available_resolutions": [
+        "1080",
+        "720",
+        "480"
+    ],
     "fullscreen": false,
     "target_fps": 60,
     "controller_cfg": {
@@ -23,5 +28,6 @@
             "192.168.106.111"
         ],
         "reconection_timeout": 4
-    }
+    },
+    "user": "raspberry-drone"
 }

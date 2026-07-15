@@ -1,5 +1,6 @@
 from ..screen import Screen, pygame, gui, GSSnapshot
 import numpy as np
+import math
 
 
 class FlightScreen(Screen):
@@ -9,21 +10,33 @@ class FlightScreen(Screen):
     def on_enter(self, manager, screen_size):
         super().on_enter(manager, screen_size)
 
-    def on_exit(self):
-        return super().on_exit()
+        self._signal_label = gui.elements.UILabel(
+            relative_rect=pygame.Rect(0, 0, 200, -1),
+            text="NO DATA",
+            manager=self.manager,
+            anchors={"center": "center"},
+        )
+        self._signal_label.hide()
+
+        self._battery_indicator = gui.elements.UILabel(
+            relative_rect=pygame.Rect(0, 0, 200, -1),
+            text="BAT: 0V",
+            manager=self.manager,
+            anchors={"top": "top"},
+        )
 
     def draw(self, surface, snapshot=None):
         self._render_stream(surface, snapshot.frame)
-
-    def update(self, dt):
-        return super().update(dt)
-
-    def process_event(self, event):
-        return super().process_event(event)
+        if snapshot.telem is not None:
+            voltage: float = snapshot.telem.get("voltage", 0)
+            self._battery_indicator.set_text(f"BAT: {voltage:.2f}V")
 
     def _render_stream(self, surf: pygame.Surface, frame: np.ndarray | None = None):
         if frame is None:
+            self._signal_label.show()
             return
+
+        self._signal_label.hide()
 
         screen_w, screen_h = surf.get_size()
         frame_h, frame_w = frame.shape[:2]

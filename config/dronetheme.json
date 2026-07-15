@@ -22,5 +22,14 @@
             "border_width": "1",
             "shadow_width": "0"
         }
+    },
+    "#main_menu_footer": {
+        "colours": {
+            "dark_bg": "#151515"
+        },
+        "misc": {
+            "shape": "rectangle",
+            "border_width": "0"
+        }
     }
 }
