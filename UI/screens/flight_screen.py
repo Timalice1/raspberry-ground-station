@@ -1,6 +1,6 @@
-from ..screen import Screen, pygame, gui, GSSnapshot
+from ..screen import Screen, pygame, gui
 import numpy as np
-import math
+from ..widgets.minimap_widget import MininmapWidget
 
 
 class FlightScreen(Screen):
@@ -18,14 +18,25 @@ class FlightScreen(Screen):
         )
         self._signal_label.hide()
 
+        self._header = gui.elements.UIPanel(
+            relative_rect=(0, 0, screen_size[0], 50),
+            manager=self.manager,
+            object_id="#flight_screen_header",
+        )
+
         self._battery_indicator = gui.elements.UILabel(
-            relative_rect=pygame.Rect(0, 0, 200, -1),
+            relative_rect=pygame.Rect(20, 0, -1, -1),
             text="BAT: 0V",
             manager=self.manager,
-            anchors={"top": "top"},
+            container=self._header,
+            anchors={
+                "centery": "centery",
+                "left": "left",
+            },
         )
 
     def draw(self, surface, snapshot=None):
+        self._signal_label.set_text(f"NO DATA FOR {snapshot.current_stream}")
         self._render_stream(surface, snapshot.frame)
         if snapshot.telem is not None:
             voltage: float = snapshot.telem.get("voltage", 0)

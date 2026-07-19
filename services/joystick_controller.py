@@ -39,12 +39,15 @@ class JoystickController:
         raw = self.joystick.get_axis(axis)
         return raw * invert if abs(raw) > self.deadzone else 0
 
-    def get_input(self) -> dict[str, int] | None:
+    def get_input(self, direction: int = 1) -> dict[str, int] | None:
+        """
+        :param direction: 1-forward, -1-backward
+        """
         if self.joystick is None:
             return None
 
-        thr = self._read_axis(self.axis_thr, self.inv_thr)
-        yaw = self._read_axis(self.axis_yaw, self.inv_yaw)
+        thr = self._read_axis(self.axis_thr, self.inv_thr) * direction
+        yaw = self._read_axis(self.axis_yaw, self.inv_yaw) * direction
 
         return {
             "thr": int(self._remap(thr, -1, 1, 1000, 2000)),

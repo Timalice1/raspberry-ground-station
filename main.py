@@ -48,6 +48,9 @@ def main():
         gs = GroundStation(controller)
         ui = UIController(cfg)
 
+        # For debugging:
+        # ui.open_screen(FlightScreen())
+
         def open_flight():
             ui.open_screen(FlightScreen())
             gs.run()

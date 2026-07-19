@@ -5,7 +5,7 @@
         1920,
         1080
     ],
-    "res": "1080",
+    "res": "480",
     "available_resolutions": [
         "1080",
         "720",
@@ -21,12 +21,13 @@
         "invert_yaw": 1,
         "swich_cam_btn": 1
     },
+    "invert_rc_on_cam_switch": true,
     "cam_cfg": {
         "credentials": "admin:Admin1234",
-        "IPs": [
-            "192.168.106.110",
-            "192.168.106.111"
-        ],
+        "cameras": {
+            "front": "192.168.106.109",
+            "back": "192.168.106.110"
+        },
         "reconection_timeout": 4
     },
     "user": "raspberry-drone"

@@ -1,16 +1,4 @@
 {
-    "panel": {
-        "colours": {
-            "dark_bg": "#0e0e0f",
-            "normal_border": "#cccccf"
-        },
-        "misc": {
-            "shape": "rounded_rectangle",
-            "shape_corner_radius": "5",
-            "border_width": "1",
-            "shadow_width": "0"
-        }
-    },
     "button": {
         "colours": {
             "normal_bg": "#222222",
@@ -21,15 +9,6 @@
             "shape_corner_radius": "5",
             "border_width": "1",
             "shadow_width": "0"
-        }
-    },
-    "#main_menu_footer": {
-        "colours": {
-            "dark_bg": "#151515"
-        },
-        "misc": {
-            "shape": "rectangle",
-            "border_width": "0"
         }
     }
 }

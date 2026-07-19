@@ -10,6 +10,9 @@ class SSHConnector:
         self.stdin = None
         self.ssh: Optional[paramiko.SSHClient] = None
 
+        self._latest_telem: str | None = None
+        self._telem_lock = threading.Lock()
+
     def connect(self, user: str, host: str):
         if not user or not host:
             logging.error("Invalid host and username provided")
@@ -31,10 +34,8 @@ class SSHConnector:
             )
             return False
         try:
-            self.stdin, self.stdout, stderr = self.ssh.exec_command(
-                "python vesc-control.py"
-            )
-            self._remote_output(self.stdout, stderr)
+            self.stdin, stdout, stderr = self.ssh.exec_command("python vesc-control.py")
+            self._remote_output(stdout, stderr)
 
             logging.info("Remote controll started")
             return True
@@ -44,7 +45,7 @@ class SSHConnector:
 
     def send_command(self, cmd: dict):
         if self.stdin is None:
-            logging.log("ssh_connector::send_command(): No input channel")
+            logging.warning("ssh_connector::send_command(): No input channel")
             return False
         try:
             self.stdin.write(f"{json.dumps(cmd)}\n")
@@ -54,10 +55,9 @@ class SSHConnector:
             logging.exception(f"ssh_connector::send_command(): {str(e)}")
             return False
 
-    def read_telemetry(self):
-        data: str = self.stdout.readline().strip()
-        if data.startswith("TELEM:"):
-            return data[6:]
+    def read_telemetry(self) -> str | None:
+        with self._telem_lock:
+            return self._latest_telem
 
     def close(self):
         if self.ssh:
@@ -69,7 +69,8 @@ class SSHConnector:
                 if line:
                     if stream is stdout:
                         if line.startswith("TELEM:"):
-                            continue
+                            with self._telem_lock:
+                                self._latest_telem = line[6:]
                         logging.info(f"[remote:{label}] {line.rstrip()}")
                     elif stream is stderr:
                         logging.error(f"[remote:{label}] {line.rstrip()}")
